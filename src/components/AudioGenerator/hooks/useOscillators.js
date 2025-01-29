@@ -2,8 +2,32 @@ import { useState, useCallback } from 'react';
 
 export const useOscillators = (audioContext, masterGain) => {
   const [oscillators, setOscillators] = useState([
-    { id: 1, frequency: 440, volume: 0.5, nodes: null },
-    { id: 2, frequency: 880, volume: 0.3, nodes: null }
+    { 
+      id: 1, 
+      frequency: 440, 
+      volume: 0.5,
+      tremolo: {
+        enabled: false,
+        type: 'sine',
+        bpm: 120,
+        depth: 0.5,
+        nodes: null
+      },
+      nodes: null 
+    },
+    { 
+      id: 2, 
+      frequency: 880, 
+      volume: 0.3,
+      tremolo: {
+        enabled: false,
+        type: 'sine',
+        bpm: 120,
+        depth: 0.5,
+        nodes: null
+      },
+      nodes: null 
+    }
   ]);
   const [nextId, setNextId] = useState(3);
 

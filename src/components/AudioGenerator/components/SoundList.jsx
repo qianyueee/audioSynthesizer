@@ -1,6 +1,7 @@
 import React from 'react';
 import { PlusCircle, X } from "lucide-react";
 import { Control, FrequencyControl } from './Controls';
+import { TremoloControl } from './TremoloControl';
 
 export const SoundList = ({ 
   oscillators, 
@@ -38,15 +39,20 @@ export const SoundList = ({
 
           <FrequencyControl
             frequency={osc.frequency}
-            onChange={freq => onUpdate(osc.id, { frequency: freq })}
+            onChange={(freq) => onUpdate(osc.id, { frequency: freq })}
           />
           
           <Control
-            label="Vol"
+            label="Volume"
             value={osc.volume}
-            onChange={vol => onUpdate(osc.id, { volume: vol })}
+            onChange={(vol) => onUpdate(osc.id, { volume: vol })}
             min={0}
             max={1}
+          />
+
+          <TremoloControl
+            tremolo={osc.tremolo}
+            onChange={(newTremolo) => onUpdate(osc.id, { tremolo: newTremolo })}
           />
         </div>
       ))}

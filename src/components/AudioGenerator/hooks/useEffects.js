@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 export const useEffects = (audioContext, masterGain) => {
   const [nodes, setNodes] = useState({
@@ -7,8 +7,24 @@ export const useEffects = (audioContext, masterGain) => {
     vibratoGain: null
   });
 
-  const initEffects = async (context, master) => {
+  const cleanupEffects = useCallback(() => {
+    if (nodes.lfo) {
+      nodes.lfo.stop();
+      nodes.lfo.disconnect();
+    }
+    if (nodes.vibratoGain) {
+      nodes.vibratoGain.disconnect();
+    }
+    if (nodes.reverb) {
+      nodes.reverb.disconnect();
+    }
+  }, [nodes]);
+
+  const initEffects = useCallback(async (context, master) => {
     if (!context || !master) return;
+
+    // 先清理现有的效果
+    cleanupEffects();
 
     const convolver = context.createConvolver();
     const impulseLength = 0.5;
@@ -40,8 +56,29 @@ export const useEffects = (audioContext, masterGain) => {
     lfo.connect(vibratoGain);
     lfo.start();
 
-    setNodes({ reverb: convolver, lfo, vibratoGain });
-  };
+    setNodes({
+      reverb: convolver,
+      lfo,
+      vibratoGain
+    });
 
-  return { ...nodes, initEffects };
+    return {
+      reverb: convolver,
+      lfo,
+      vibratoGain
+    };
+  }, [cleanupEffects]);
+
+  // 组件卸载时清理
+  useEffect(() => {
+    return () => {
+      cleanupEffects();
+    };
+  }, [cleanupEffects]);
+
+  return {
+    ...nodes,
+    initEffects,
+    cleanupEffects
+  };
 };

@@ -36,8 +36,7 @@ const AudioGenerator = () => {
   const [baseFrequency, setBaseFrequency] = useState(220);
 
   const { audioContext, masterGain, initAudio } = useAudioContext();
-  const { reverb, lfo, vibratoGain, initEffects } = useEffects(audioContext, masterGain);
-
+  const { reverb, lfo, vibratoGain, initEffects, cleanupEffects } = useEffects(audioContext, masterGain);  // 添加 cleanupEffects
   const { 
     oscillators, 
     addOscillator, 
@@ -46,63 +45,80 @@ const AudioGenerator = () => {
     setOscillators 
   } = useOscillators(audioContext, masterGain);
 
-  const setupHarmonics = useCallback((baseFreq) => {
-    const harmonicOscillators = HARMONICS.map((n, index) => ({
-      id: n,
-      frequency: baseFreq * n,
-      volume: 1 / (n * 1.5),
-      nodes: null
-    }));
-    setOscillators(harmonicOscillators);
-  }, [setOscillators]);
-
   const handleModeChange = useCallback((newMode) => {
     if (isPlaying) {
-      // 如果正在播放，先停止
-      oscillators.forEach(osc => {
-        if (osc.nodes) {
-          osc.nodes.oscillator?.stop();
-          osc.nodes.oscillator?.disconnect();
-          osc.nodes.filter?.disconnect();
-          osc.nodes.gain?.disconnect();
-        }
-      });
-      setIsPlaying(false);
+      handlePlayStop();
     }
-    
     setMode(newMode);
     if (newMode === 'harmonic') {
-      setupHarmonics(baseFrequency);
+      const harmonicOscillators = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => ({
+        id: n,
+        frequency: baseFrequency * n,
+        volume: 1 / (n * 1.5),
+        nodes: null
+      }));
+      setOscillators(harmonicOscillators);
     } else {
       setOscillators([
         { id: 1, frequency: 440, volume: 0.5, nodes: null },
         { id: 2, frequency: 880, volume: 0.3, nodes: null }
       ]);
     }
-  }, [isPlaying, oscillators, baseFrequency, setupHarmonics, setOscillators]);
-
+  }, [isPlaying, handlePlayStop, baseFrequency, setOscillators]);
+    
   const handlePlayStop = useCallback(async () => {
     if (isPlaying) {
       oscillators.forEach(osc => {
         if (osc.nodes) {
-          osc.nodes.oscillator?.stop();
-          osc.nodes.oscillator?.disconnect();
-          osc.nodes.filter?.disconnect();
-          osc.nodes.gain?.disconnect();
+          try {
+            // 检查并停止主振荡器
+            if (osc.nodes.oscillator && osc.nodes.oscillator.playbackState === 'playing') {
+              osc.nodes.oscillator.stop();
+            }
+            osc.nodes.oscillator?.disconnect();
+            osc.nodes.filter?.disconnect();
+            osc.nodes.gain?.disconnect();
+  
+            // 检查并停止颤音节点
+            if (osc.tremolo?.nodes) {
+              if (osc.tremolo.nodes.oscillator && osc.tremolo.nodes.oscillator.playbackState === 'playing') {
+                osc.tremolo.nodes.oscillator.stop();
+              }
+              osc.tremolo.nodes.oscillator?.disconnect();
+              osc.tremolo.nodes.gain?.disconnect();
+              
+              // 清除衰减模式的定时器
+              if (osc.tremolo.type === 'decay' && osc.tremolo.intervalId) {
+                clearInterval(osc.tremolo.intervalId);
+              }
+            }
+          } catch (e) {
+            console.error('Error managing audio nodes:', e);
+          }
         }
       });
-      setOscillators(oscillators.map(osc => ({ ...osc, nodes: null })));
+      setOscillators(oscillators.map(osc => ({
+        ...osc,
+        nodes: null,
+        tremolo: osc.tremolo ? {
+          ...osc.tremolo,
+          nodes: null,
+          intervalId: null
+        } : null
+      })));
       setIsPlaying(false);
+      cleanupEffects();
     } else {
-      // 初始化音频上下文并获取最新的引用
+      cleanupEffects();
+      
       const { audioContext: ctx, masterGain: gain } = initAudio();
       if (!ctx || !gain) return;
-      
-      // 确保先初始化效果器
+  
       await initEffects(ctx, gain);
       
       const preset = presets[globalPreset];
       const newOscillators = oscillators.map(osc => {
+        // 创建主音频节点
         const gainNode = ctx.createGain();
         const filter = ctx.createBiquadFilter();
         const oscillator = ctx.createOscillator();
@@ -111,35 +127,87 @@ const AudioGenerator = () => {
         filter.type = preset.filterType;
         filter.frequency.value = preset.filterFreq;
         filter.Q.value = preset.filterQ;
+        
         oscillator.type = preset.waveform;
         oscillator.frequency.setValueAtTime(osc.frequency, ctx.currentTime);
         
-        // 按顺序连接节点
         oscillator.connect(filter);
         filter.connect(gainNode);
-        gainNode.connect(gain); // 使用新的 masterGain 引用
+        gainNode.connect(gain);
         
-        // 如果有颤音效果，也连接它
         if (vibratoGain) {
           vibratoGain.connect(oscillator.frequency);
+        }
+  
+        // 设置颤音
+        let tremoloNodes = null;
+        if (osc.tremolo?.enabled) {
+          const tremOsc = ctx.createOscillator();
+          const tremGain = ctx.createGain();
+          
+          tremGain.gain.value = osc.tremolo.depth;
+          
+          if (osc.tremolo.type === 'sine') {
+            tremOsc.type = 'sine';
+            tremOsc.frequency.value = osc.tremolo.bpm / 60;
+            
+            tremOsc.connect(tremGain);
+            tremGain.connect(gainNode.gain);
+            tremOsc.start();
+          } else if (osc.tremolo.type === 'decay') {
+            // 清除之前的间隔定时器（如果存在）
+            if (osc.tremolo.intervalId) {
+              clearInterval(osc.tremolo.intervalId);
+            }
+          
+            const period = 60 / osc.tremolo.bpm; // 完整周期（秒）
+            // 使用 depth 来控制衰减时长占周期的比例
+            const decayTime = period * osc.tremolo.depth * 3; // 衰减时长
+            const sustainTime = period - decayTime; // 维持时长
+          
+            // 创建初始包络
+            gainNode.gain.setValueAtTime(1, ctx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + decayTime);
+          
+            // 设置周期性的音量包络
+            const intervalId = setInterval(() => {
+              const now = ctx.currentTime;
+              gainNode.gain.cancelScheduledValues(now);
+              gainNode.gain.setValueAtTime(1, now);
+              // 使用 exponentialRampToValueAtTime 创建自然的衰减效果
+              gainNode.gain.exponentialRampToValueAtTime(0.001, now + decayTime);
+            }, period * 1000);
+          
+            // 保存间隔定时器ID以便后续清理
+            osc.tremolo.intervalId = intervalId;
+          }
+          
+          tremoloNodes = {
+            oscillator: tremOsc,
+            gain: tremGain
+          };
         }
         
         oscillator.start();
         
-        return { 
-          ...osc, 
-          nodes: { 
-            oscillator, 
-            filter, 
-            gain: gainNode 
-          }
+        return {
+          ...osc,
+          nodes: {
+            oscillator,
+            filter,
+            gain: gainNode
+          },
+          tremolo: osc.tremolo ? {
+            ...osc.tremolo,
+            nodes: tremoloNodes
+          } : null
         };
       });
       
       setOscillators(newOscillators);
       setIsPlaying(true);
     }
-  }, [isPlaying, oscillators, globalPreset, initAudio, initEffects, vibratoGain]);
+  }, [isPlaying, oscillators, globalPreset, initAudio, initEffects, vibratoGain, cleanupEffects]);
 
   React.useEffect(() => {
     if (lfo) lfo.frequency.setValueAtTime(vibratoRate, audioContext?.currentTime);
@@ -210,43 +278,79 @@ const AudioGenerator = () => {
             </div>
           </div>
 
-          {/* Base Frequency Control */}
-          {mode === 'harmonic' && (
-            <div className="space-y-2">
-              <label className="block text-sm font-medium">Base</label>
-              <div className="flex gap-2 items-center">
-                <input
-                  type="number"
-                  min="20"
-                  max="1000"
-                  value={baseFrequency}
-                  onChange={(e) => {
-                    const newFreq = Number(e.target.value);
-                    setBaseFrequency(newFreq);
-                    if (mode === 'harmonic') {
-                      setupHarmonics(newFreq);
-                    }
-                  }}
-                  className="w-20 px-2 py-1 border rounded text-sm"
-                />
-                <span className="text-sm">Hz</span>
-                <input
-                  type="range"
-                  min="20"
-                  max="1000"
-                  value={baseFrequency}
-                  onChange={(e) => {
-                    const newFreq = Number(e.target.value);
-                    setBaseFrequency(newFreq);
-                    if (mode === 'harmonic') {
-                      setupHarmonics(newFreq);
-                    }
-                  }}
-                  className="flex-1"
-                />
-              </div>
-            </div>
-          )}
+{/* Base Frequency Control */}
+{mode === 'harmonic' && (
+  <div className="space-y-2">
+    <label className="block text-sm font-medium">Base Frequency</label>
+    <div className="flex gap-2 items-center">
+      <input
+        type="number"
+        min="20"
+        max="10000"
+        step="0.1"  // 添加步进值为0.1
+        value={Number(baseFrequency).toFixed(1)}  // 固定显示一位小数
+        onChange={(e) => {
+          const newFreq = Number(e.target.value);
+          setBaseFrequency(newFreq);
+          
+          if (isPlaying) {
+            oscillators.forEach((osc, index) => {
+              if (osc.nodes?.oscillator) {
+                const harmonicNumber = index + 1;
+                osc.nodes.oscillator.frequency.setValueAtTime(
+                  newFreq * harmonicNumber,
+                  audioContext.currentTime
+                );
+              }
+            });
+          } else {
+            const harmonicOscillators = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => ({
+              id: n,
+              frequency: newFreq * n,
+              volume: 1 / (n * 1.5),
+              nodes: null
+            }));
+            setOscillators(harmonicOscillators);
+          }
+        }}
+        className="w-24 px-2 py-1 border rounded text-sm"
+      />
+      <span className="text-sm">Hz</span>
+      <input
+        type="range"
+        min="20"
+        max="10000"
+        step="0.1"  // 添加步进值为0.1
+        value={baseFrequency}
+        onChange={(e) => {
+          const newFreq = Number(e.target.value);
+          setBaseFrequency(newFreq);
+          
+          if (isPlaying) {
+            oscillators.forEach((osc, index) => {
+              if (osc.nodes?.oscillator) {
+                const harmonicNumber = index + 1;
+                osc.nodes.oscillator.frequency.setValueAtTime(
+                  newFreq * harmonicNumber,
+                  audioContext.currentTime
+                );
+              }
+            });
+          } else {
+            const harmonicOscillators = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => ({
+              id: n,
+              frequency: newFreq * n,
+              volume: 1 / (n * 1.5),
+              nodes: null
+            }));
+            setOscillators(harmonicOscillators);
+          }
+        }}
+        className="flex-1"
+      />
+    </div>
+  </div>
+)}   
 
           {/* Preset Selection */}
           <div className="space-y-1">
