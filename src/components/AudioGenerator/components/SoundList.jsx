@@ -50,10 +50,12 @@ export const SoundList = ({
             max={1}
           />
 
-          <TremoloControl
-            tremolo={osc.tremolo}
-            onChange={(newTremolo) => onUpdate(osc.id, { tremolo: newTremolo })}
-          />
+<TremoloControl
+  tremolo={osc.tremolo}
+  onChange={(newTremolo) => onUpdate(osc.id, { tremolo: newTremolo })}
+  audioContext={audioContext}
+  gainNode={osc.nodes?.gain}
+/>
         </div>
       ))}
     </div>

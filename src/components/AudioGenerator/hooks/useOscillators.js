@@ -1,75 +1,90 @@
 import { useState, useCallback } from 'react';
 
-export const useOscillators = (audioContext, masterGain) => {
-  const [oscillators, setOscillators] = useState([
-    { 
-      id: 1, 
-      frequency: 440, 
-      volume: 0.5,
-      tremolo: {
-        enabled: false,
-        type: 'sine',
-        bpm: 120,
-        depth: 0.5,
-        nodes: null
-      },
-      nodes: null 
+const initialOscillators = [
+  { 
+    id: 1, 
+    frequency: 440, 
+    volume: 0.5,
+    tremolo: {
+      enabled: false,
+      type: 'sine',
+      bpm: 120,
+      depth: 0.5,
+      nodes: null,
+      intervalId: null
     },
-    { 
-      id: 2, 
-      frequency: 880, 
-      volume: 0.3,
-      tremolo: {
-        enabled: false,
-        type: 'sine',
-        bpm: 120,
-        depth: 0.5,
-        nodes: null
-      },
-      nodes: null 
-    }
-  ]);
-  const [nextId, setNextId] = useState(3);
+    nodes: null 
+  },
+  { 
+    id: 2, 
+    frequency: 880, 
+    volume: 0.3,
+    tremolo: {
+      enabled: false,
+      type: 'sine',
+      bpm: 120,
+      depth: 0.5,
+      nodes: null,
+      intervalId: null
+    },
+    nodes: null 
+  }
+];
+
+// 修改为导出函数而不是对象
+export function useOscillators(audioContext, masterGain) {
+  const [oscillators, setOscillators] = useState(initialOscillators);
 
   const addOscillator = useCallback(() => {
     setOscillators(prev => [
       ...prev,
-      { id: nextId, frequency: 440, volume: 0.5, nodes: null }
+      {
+        id: prev.length + 1,
+        frequency: 440,
+        volume: 0.5,
+        tremolo: {
+          enabled: false,
+          type: 'sine',
+          bpm: 120,
+          depth: 0.5,
+          nodes: null,
+          intervalId: null
+        },
+        nodes: null
+      }
     ]);
-    setNextId(prev => prev + 1);
-  }, [nextId]);
+  }, []);
 
   const removeOscillator = useCallback((id) => {
     setOscillators(prev => {
       const osc = prev.find(o => o.id === id);
       if (osc?.nodes) {
-        osc.nodes.oscillator?.stop();
-        osc.nodes.oscillator?.disconnect();
-        osc.nodes.filter?.disconnect();
-        osc.nodes.gain?.disconnect();
+        if (osc.nodes.oscillator) osc.nodes.oscillator.stop();
+        if (osc.nodes.oscillator) osc.nodes.oscillator.disconnect();
+        if (osc.nodes.filter) osc.nodes.filter.disconnect();
+        if (osc.nodes.gain) osc.nodes.gain.disconnect();
+      }
+      if (osc?.tremolo?.intervalId) {
+        clearInterval(osc.tremolo.intervalId);
       }
       return prev.filter(o => o.id !== id);
     });
   }, []);
 
   const updateOscillator = useCallback((id, updates) => {
-    if (!audioContext) return;
-
     setOscillators(prev => prev.map(osc => {
       if (osc.id !== id) return osc;
-      
       const newOsc = { ...osc, ...updates };
       
-      if (osc.nodes) {
-        if (updates.frequency !== undefined) {
-          osc.nodes.oscillator.frequency.setValueAtTime(
-            updates.frequency,
-            audioContext.currentTime
-          );
-        }
-        if (updates.volume !== undefined) {
-          osc.nodes.gain.gain.value = updates.volume;
-        }
+      if (osc.nodes?.oscillator && updates.frequency !== undefined) {
+        osc.nodes.oscillator.frequency.setValueAtTime(
+          updates.frequency,
+          audioContext.currentTime
+        );
+      }
+      
+      if (osc.nodes?.gain && updates.volume !== undefined) {
+        osc.nodes.gain.gain.value = updates.volume;
       }
       
       return newOsc;
@@ -78,9 +93,9 @@ export const useOscillators = (audioContext, masterGain) => {
 
   return {
     oscillators,
+    setOscillators,
     addOscillator,
     removeOscillator,
-    updateOscillator,
-    setOscillators
+    updateOscillator
   };
-};
+}

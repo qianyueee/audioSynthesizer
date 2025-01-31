@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 
 export const useEffects = (audioContext, masterGain) => {
   const [nodes, setNodes] = useState({
@@ -18,14 +18,17 @@ export const useEffects = (audioContext, masterGain) => {
     if (nodes.reverb) {
       nodes.reverb.disconnect();
     }
+    setNodes({
+      reverb: null,
+      lfo: null,
+      vibratoGain: null
+    });
   }, [nodes]);
 
   const initEffects = useCallback(async (context, master) => {
     if (!context || !master) return;
 
-    // 先清理现有的效果
-    cleanupEffects();
-
+    // 创建混响
     const convolver = context.createConvolver();
     const impulseLength = 0.5;
     const impulse = context.createBuffer(
@@ -43,16 +46,20 @@ export const useEffects = (audioContext, masterGain) => {
     
     convolver.buffer = impulse;
     const reverbGain = context.createGain();
+    reverbGain.gain.value = 0.16;
+
+    // 创建 vibrato
     const lfo = context.createOscillator();
     const vibratoGain = context.createGain();
-
-    reverbGain.gain.value = 0.16;
+    
     lfo.frequency.value = 5;
     vibratoGain.gain.value = 0;
-
+    
+    // 连接节点
     master.connect(convolver);
     convolver.connect(reverbGain);
     reverbGain.connect(context.destination);
+    
     lfo.connect(vibratoGain);
     lfo.start();
 
@@ -62,23 +69,8 @@ export const useEffects = (audioContext, masterGain) => {
       vibratoGain
     });
 
-    return {
-      reverb: convolver,
-      lfo,
-      vibratoGain
-    };
-  }, [cleanupEffects]);
+    return { reverb: convolver, lfo, vibratoGain };
+  }, []);
 
-  // 组件卸载时清理
-  useEffect(() => {
-    return () => {
-      cleanupEffects();
-    };
-  }, [cleanupEffects]);
-
-  return {
-    ...nodes,
-    initEffects,
-    cleanupEffects
-  };
+  return { ...nodes, initEffects, cleanupEffects };
 };
