@@ -6,17 +6,19 @@ import { useAudioContext } from './hooks/useAudioContext';
 import { useEffects } from './hooks/useEffects';
 import { useOscillators } from './hooks/useOscillators';
 import { PlusCircle } from "lucide-react";
+// 在 AudioGenerator/index.jsx 中添加
+import { ExportControl } from './components/ExportControl';
 
 const presets = {
   bright: {
-    name: 'bright',
+    name: 'Bright',
     waveform: 'sawtooth',
     filterType: 'lowpass',
     filterFreq: 1100,
     filterQ: 2
   },
   soft: {
-    name: 'soft',
+    name: 'Soft',
     waveform: 'triangle',
     filterType: 'lowpass',
     filterFreq: 1000,
@@ -24,9 +26,8 @@ const presets = {
   }
 };
 
-const HARMONICS = [1, 2, 3, 4, 5, 6, 7, 8, 9]; // 泛音序列
-
 const AudioGenerator = () => {
+  // 基础状态
   const [isPlaying, setIsPlaying] = useState(false);
   const [globalPreset, setGlobalPreset] = useState('bright');
   const [masterVolume, setMasterVolume] = useState(0.7);
@@ -34,9 +35,10 @@ const AudioGenerator = () => {
   const [vibratoDepth, setVibratoDepth] = useState(0);
   const [mode, setMode] = useState('free');
   const [baseFrequency, setBaseFrequency] = useState(220);
+  const [baseFreqInput, setBaseFreqInput] = useState('220.0');
 
   const { audioContext, masterGain, initAudio } = useAudioContext();
-  const { reverb, lfo, vibratoGain, initEffects, cleanupEffects } = useEffects(audioContext, masterGain);  // 添加 cleanupEffects
+  const { reverb, lfo, vibratoGain, initEffects, cleanupEffects } = useEffects(audioContext, masterGain);
   const { 
     oscillators, 
     addOscillator, 
@@ -45,26 +47,81 @@ const AudioGenerator = () => {
     setOscillators 
   } = useOscillators(audioContext, masterGain);
 
+  // 更新基频的函数
+  const updateBaseFrequency = useCallback((newFreq) => {
+    setBaseFrequency(newFreq);
+    const updatedOscillators = oscillators.map((osc, index) => {
+      const harmonicNumber = index + 1;
+      const newHarmonicFreq = newFreq * harmonicNumber;
+      
+      if (isPlaying && osc.nodes?.oscillator) {
+        osc.nodes.oscillator.frequency.setValueAtTime(
+          newHarmonicFreq,
+          audioContext.currentTime
+        );
+      }
+      
+      return {
+        ...osc,
+        frequency: newHarmonicFreq
+      };
+    });
+    
+    setOscillators(updatedOscillators);
+  }, [isPlaying, oscillators, audioContext, setOscillators]);
+
+  // ... 后续代码
   const handleModeChange = useCallback((newMode) => {
     if (isPlaying) {
       handlePlayStop();
     }
     setMode(newMode);
     if (newMode === 'harmonic') {
-      const harmonicOscillators = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => ({
-        id: n,
-        frequency: baseFrequency * n,
-        volume: 1 / (n * 1.5),
+      const harmonicOscillators = Array.from({length: 9}, (_, i) => ({
+        id: i + 1,
+        frequency: baseFrequency * (i + 1),
+        volume: 1 / ((i + 1) * 1.5),
+        tremolo: {
+          enabled: false,
+          type: 'sine',
+          bpm: 120,
+          depth: 0.5,
+          nodes: null
+        },
         nodes: null
       }));
       setOscillators(harmonicOscillators);
     } else {
       setOscillators([
-        { id: 1, frequency: 440, volume: 0.5, nodes: null },
-        { id: 2, frequency: 880, volume: 0.3, nodes: null }
+        {
+          id: 1,
+          frequency: 440,
+          volume: 0.5,
+          tremolo: {
+            enabled: false,
+            type: 'sine',
+            bpm: 120,
+            depth: 0.5,
+            nodes: null
+          },
+          nodes: null
+        },
+        {
+          id: 2,
+          frequency: 880,
+          volume: 0.3,
+          tremolo: {
+            enabled: false,
+            type: 'sine',
+            bpm: 120,
+            depth: 0.5,
+            nodes: null
+          },
+          nodes: null
+        }
       ]);
     }
-  }, [isPlaying, handlePlayStop, baseFrequency, setOscillators]);
+  }, [isPlaying, handlePlayStop, baseFrequency]);
     
   const handlePlayStop = useCallback(async () => {
     if (isPlaying) {
@@ -283,34 +340,22 @@ const AudioGenerator = () => {
   <div className="space-y-2">
     <label className="block text-sm font-medium">Base Frequency</label>
     <div className="flex gap-2 items-center">
+      {/* 使用本地状态控制输入 */}
       <input
-        type="number"
-        min="20"
-        max="10000"
-        step="0.1"  // 添加步进值为0.1
-        value={Number(baseFrequency).toFixed(1)}  // 固定显示一位小数
-        onChange={(e) => {
+        type="text"
+        value={baseFreqInput}
+        onChange={(e) => setBaseFreqInput(e.target.value)}
+        onBlur={(e) => {
           const newFreq = Number(e.target.value);
-          setBaseFrequency(newFreq);
-          
-          if (isPlaying) {
-            oscillators.forEach((osc, index) => {
-              if (osc.nodes?.oscillator) {
-                const harmonicNumber = index + 1;
-                osc.nodes.oscillator.frequency.setValueAtTime(
-                  newFreq * harmonicNumber,
-                  audioContext.currentTime
-                );
-              }
-            });
+          if (!isNaN(newFreq) && newFreq >= 20 && newFreq <= 10000) {
+            updateBaseFrequency(newFreq);
           } else {
-            const harmonicOscillators = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => ({
-              id: n,
-              frequency: newFreq * n,
-              volume: 1 / (n * 1.5),
-              nodes: null
-            }));
-            setOscillators(harmonicOscillators);
+            setBaseFreqInput(baseFrequency.toFixed(1));
+          }
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.target.blur();
           }
         }}
         className="w-24 px-2 py-1 border rounded text-sm"
@@ -320,38 +365,18 @@ const AudioGenerator = () => {
         type="range"
         min="20"
         max="10000"
-        step="0.1"  // 添加步进值为0.1
+        step="0.1"
         value={baseFrequency}
         onChange={(e) => {
           const newFreq = Number(e.target.value);
-          setBaseFrequency(newFreq);
-          
-          if (isPlaying) {
-            oscillators.forEach((osc, index) => {
-              if (osc.nodes?.oscillator) {
-                const harmonicNumber = index + 1;
-                osc.nodes.oscillator.frequency.setValueAtTime(
-                  newFreq * harmonicNumber,
-                  audioContext.currentTime
-                );
-              }
-            });
-          } else {
-            const harmonicOscillators = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => ({
-              id: n,
-              frequency: newFreq * n,
-              volume: 1 / (n * 1.5),
-              nodes: null
-            }));
-            setOscillators(harmonicOscillators);
-          }
+          updateBaseFrequency(newFreq);
+          setBaseFreqInput(newFreq.toFixed(1));
         }}
         className="flex-1"
       />
     </div>
   </div>
-)}   
-
+)}
           {/* Preset Selection */}
           <div className="space-y-1">
             <label className="block text-sm">Timbre:</label>
@@ -437,6 +462,12 @@ const AudioGenerator = () => {
               audioContext={audioContext}
             />
           </div>
+          <ExportControl
+            audioContext={audioContext}
+            oscillators={oscillators}
+          masterGain={masterGain}
+            initAudio={initAudio}  // 传入初始化函数
+          />
         </div>
       </CardContent>
     </Card>

@@ -5,16 +5,18 @@ export const useAudioContext = () => {
   const [masterGain, setMasterGain] = useState(null);
 
   const initAudio = useCallback(() => {
-    if (audioContext) return { audioContext, masterGain };
-
+    if (audioContext) {
+      return { audioContext, masterGain };
+    }
+  
     const context = new (window.AudioContext || window.webkitAudioContext)();
     const master = context.createGain();
     master.connect(context.destination);
     
     setAudioContext(context);
     setMasterGain(master);
+  
     return { audioContext: context, masterGain: master };
   }, [audioContext, masterGain]);
-
   return { audioContext, masterGain, initAudio };
 };
