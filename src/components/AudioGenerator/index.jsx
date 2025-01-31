@@ -45,31 +45,7 @@ const AudioGenerator = () => {
     updateOscillator,
     setOscillators 
   } = useOscillators(audioContext, masterGain);
-  const updateBaseFrequency = useCallback((newFreq) => {
-    setBaseFrequency(newFreq);
-    
-    // 直接构建新的振荡器数组
-    const newOscillators = Array.from({length: oscillators.length}, (_, i) => {
-      const oldOsc = oscillators[i];
-      const newFrequency = newFreq * (i + 1);
-      
-      // 如果正在播放，更新实际频率
-      if (isPlaying && oldOsc.nodes?.oscillator) {
-        oldOsc.nodes.oscillator.frequency.setValueAtTime(
-          newFrequency,
-          audioContext.currentTime
-        );
-      }
-      
-      return {
-        ...oldOsc,
-        frequency: newFrequency
-      };
-    });
-    
-    setOscillators(newOscillators);
-  }, [oscillators, isPlaying, audioContext]);
-
+  
   // Vibrato 参数更新
   React.useEffect(() => {
     if (lfo && audioContext) {
@@ -296,7 +272,32 @@ const handleModeChange = useCallback((newMode) => {
         max="10000"
         step="0.1"
         value={baseFrequency}
-        onChange={(e) => updateBaseFrequency(Number(e.target.value))}
+        onChange={(e) => {
+          const newFreq = Number(e.target.value);
+          setBaseFrequency(newFreq);
+          
+          // 更新所有振荡器的频率
+          const updatedOscillators = oscillators.map((osc, index) => {
+            const harmonicFreq = newFreq * (index + 1);
+            
+            // 如果正在播放，实时更新频率
+            if (isPlaying && osc.nodes?.oscillator) {
+              osc.nodes.oscillator.frequency.setValueAtTime(
+                harmonicFreq,
+                audioContext.currentTime
+              );
+            }
+            
+            // 立即更新显示的频率
+            return {
+              ...osc,
+              frequency: harmonicFreq // 这里会更新显示的频率
+            };
+          });
+          
+          // 立即更新状态以刷新显示
+          setOscillators(updatedOscillators);
+        }}
         className="w-24 px-2 py-1 border rounded text-sm"
       />
       <span className="text-sm">Hz</span>
@@ -306,7 +307,28 @@ const handleModeChange = useCallback((newMode) => {
         max="10000"
         step="0.1"
         value={baseFrequency}
-        onChange={(e) => updateBaseFrequency(Number(e.target.value))}
+        onChange={(e) => {
+          const newFreq = Number(e.target.value);
+          setBaseFrequency(newFreq);
+          
+          const updatedOscillators = oscillators.map((osc, index) => {
+            const harmonicFreq = newFreq * (index + 1);
+            
+            if (isPlaying && osc.nodes?.oscillator) {
+              osc.nodes.oscillator.frequency.setValueAtTime(
+                harmonicFreq,
+                audioContext.currentTime
+              );
+            }
+            
+            return {
+              ...osc,
+              frequency: harmonicFreq
+            };
+          });
+          
+          setOscillators(updatedOscillators);
+        }}
         className="flex-1"
       />
     </div>
