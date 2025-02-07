@@ -9,7 +9,6 @@ export const TremoloControl = ({ tremolo, onChange, audioContext, gainNode }) =>
     
     // 如果是开启/关闭颤音
     if ('enabled' in updates) {
-      // 如果是开启颤音
       if (updates.enabled) {
         newTremolo = {
           ...newTremolo,
@@ -134,26 +133,32 @@ export const TremoloControl = ({ tremolo, onChange, audioContext, gainNode }) =>
         </div>
       </div>
       
-      <div className="space-y-2">
-        <Control
-          label="BPM"
-          value={tremolo.bpm}
-          onChange={(v) => updateTremoloParams({ bpm: v })}
-          min={30}
-          max={240}
-          step={1}
-          unit=" BPM"
-          valueMultiplier={1}
-        />
-        <Control
-          label={tremolo.type === 'sine' ? 'Depth' : 'Decay Ratio'}
-          value={tremolo.depth}
-          onChange={(v) => updateTremoloParams({ depth: v })}
-          min={0}
-          max={1}
-          step={0.01}
-        />
-      </div>
+      {tremolo.enabled && (
+        <div className="space-y-2">
+          <Control
+            label="BPM"
+            value={tremolo.bpm}
+            onChange={(v) => updateTremoloParams({ bpm: v })}
+            min={30}
+            max={240}
+            step={1}
+            unit=" BPM"
+            valueMultiplier={1}
+            precision={0}
+          />
+          <Control
+            label={tremolo.type === 'sine' ? 'Depth' : 'Decay Ratio'}
+            value={tremolo.depth}
+            onChange={(v) => updateTremoloParams({ depth: v })}
+            min={0}
+            max={1}
+            step={0.01}
+            unit="%"
+            valueMultiplier={100}
+            precision={1}
+          />
+        </div>
+      )}
     </div>
   );
 };
