@@ -60,10 +60,10 @@ export const Control = ({
   );
 };
 export const FrequencyControl = ({ frequency, onChange }) => {
-  const [inputValue, setInputValue] = useState(frequency.toFixed(1));
+  const [inputValue, setInputValue] = useState(frequency.toFixed(2));  // 改为两位小数
 
   useEffect(() => {
-    setInputValue(frequency.toFixed(1));
+    setInputValue(frequency.toFixed(2));  // 改为两位小数
   }, [frequency]);
 
   return (
@@ -77,15 +77,16 @@ export const FrequencyControl = ({ frequency, onChange }) => {
             setInputValue(e.target.value);
             const newFreq = Number(e.target.value);
             if (!isNaN(newFreq) && newFreq >= 20 && newFreq <= 10000) {
-              onChange(newFreq);
+              onChange(Number(newFreq.toFixed(2)));  // 确保更新时也保持两位小数
             }
           }}
           onBlur={(e) => {
             const newFreq = Number(e.target.value);
             if (!isNaN(newFreq) && newFreq >= 20 && newFreq <= 10000) {
-              onChange(newFreq);
+              onChange(Number(newFreq.toFixed(2)));
+              setInputValue(newFreq.toFixed(2));
             } else {
-              setInputValue(frequency.toFixed(1));
+              setInputValue(frequency.toFixed(2));
             }
           }}
           className="w-24 px-2 py-1 border rounded text-sm"
@@ -96,12 +97,12 @@ export const FrequencyControl = ({ frequency, onChange }) => {
         type="range"
         min="20"
         max="10000"
-        step="0.1"
+        step="0.01"  // 改为 0.01 以支持两位小数
         value={frequency}
         onChange={(e) => {
-          const newFreq = Number(e.target.value);
+          const newFreq = Number(Number(e.target.value).toFixed(2));  // 确保是两位小数
           onChange(newFreq);
-          setInputValue(newFreq.toFixed(1));
+          setInputValue(newFreq.toFixed(2));
         }}
         className="w-full"
       />
